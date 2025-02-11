@@ -4,6 +4,16 @@ import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useSession } from 'next-auth/react';
 
+interface Message {
+  id: string;
+  content: string;
+  senderId: string;
+  senderName: string;
+  receiverId?: string;
+  groupId?: string;
+  type: 'private' | 'group';
+}
+
 export const useSocket = () => {
   const socket = useRef<Socket | null>(null);
   const { data: session } = useSession();
@@ -70,7 +80,7 @@ export const useSocket = () => {
     }
   };
 
-  const onNewMessage = (callback: (message: any) => void) => {
+  const onNewMessage = (callback: (message: Message) => void) => {
     if (socket.current) {
       socket.current.on('new-message', callback);
     }

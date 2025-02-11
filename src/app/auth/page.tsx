@@ -101,7 +101,7 @@ export default function AuthPage() {
           toast.error(data.error || 'Something went wrong');
         }
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('An error occurred');
     } finally {
       setIsLoading(false);

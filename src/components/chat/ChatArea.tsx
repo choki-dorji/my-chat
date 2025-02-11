@@ -70,7 +70,7 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
     } else {
       setMessages([]);
     }
-  }, [selectedChat]);
+  }, [selectedChat, fetchMessages, joinChat, leaveChat]);
 
   const fetchMessages = async () => {
     if (!selectedChat) return;
