@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { useSocket } from '@/hooks/useSocket';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
@@ -13,6 +13,7 @@ interface ChatAreaProps {
     id: string;
     name: string;
   } | null;
+  onBackClick: () => void;
 }
 
 interface Message {
@@ -49,7 +50,28 @@ function UserAvatar({ user }: { user: { name: string; image?: string | null } })
   );
 }
 
-export default function ChatArea({ selectedChat }: ChatAreaProps) {
+// Add this new component for the typing indicator
+function TypingIndicator({ user }: { user: string }) {
+  return (
+    <div className="flex items-start space-x-2">
+      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">
+        {user.charAt(0).toUpperCase()}
+      </div>
+      <div className="bg-gray-100 rounded-2xl px-4 py-2">
+        <div className="flex items-center space-x-1">
+          <span className="text-sm text-gray-500">{user} is typing</span>
+          <div className="flex space-x-1">
+            <div className="typing-dot w-1.5 h-1.5 bg-gray-400 rounded-full" />
+            <div className="typing-dot w-1.5 h-1.5 bg-gray-400 rounded-full" />
+            <div className="typing-dot w-1.5 h-1.5 bg-gray-400 rounded-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
   const { data: session } = useSession();
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -58,20 +80,11 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { joinChat, leaveChat, sendMessage, onNewMessage, emitTyping, emitStopTyping, onUserTyping, onUserStopTyping } = useSocket();
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
 
-  // Load messages when chat is selected
-  useEffect(() => {
-    if (selectedChat) {
-      fetchMessages();
-      joinChat(selectedChat.id, selectedChat.type);
-      return () => {
-        leaveChat(selectedChat.id);
-      };
-    } else {
-      setMessages([]);
-    }
-  }, [selectedChat, fetchMessages, joinChat, leaveChat]);
-
+  // Define fetchMessages before using it in useEffect
   const fetchMessages = async () => {
     if (!selectedChat) return;
     
@@ -89,9 +102,45 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
     }
   };
 
+  // Function to scroll to bottom
+  const scrollToBottom = (force = false) => {
+    if (messagesEndRef.current && (shouldAutoScroll || force)) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Handle scroll events
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShouldAutoScroll(isNearBottom);
+    }
+  };
+
+  // Load messages when chat is selected
+  useEffect(() => {
+    if (selectedChat) {
+      isInitialLoadRef.current = true;
+      fetchMessages().then(() => {
+        // Force scroll to bottom only on initial load
+        if (isInitialLoadRef.current) {
+          scrollToBottom(true);
+          isInitialLoadRef.current = false;
+        }
+      });
+      joinChat(selectedChat.id, selectedChat.type);
+      return () => {
+        leaveChat(selectedChat.id);
+      };
+    } else {
+      setMessages([]);
+    }
+  }, [selectedChat?.id]);
+
+  // Handle new messages
   useEffect(() => {
     const handleNewMessage = (newMessage: Message) => {
-      // Only add message if it belongs to current chat
       if (selectedChat) {
         if (
           (selectedChat.type === 'private' &&
@@ -100,25 +149,29 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
           (selectedChat.type === 'group' && newMessage.groupId === selectedChat.id)
         ) {
           setMessages((prev) => [...prev, newMessage]);
+          // Only scroll if we're already near the bottom
+          scrollToBottom();
         }
       }
     };
 
     const cleanup = onNewMessage(handleNewMessage);
-    return () => {
-      cleanup();
-    };
+    return () => cleanup();
   }, [onNewMessage, selectedChat, session?.user?.id]);
 
   useEffect(() => {
-    const handleUserTyping = (user: string) => {
-      setTypingUser(user);
-      setIsTyping(true);
+    const handleUserTyping = (data: { user: string; chatId: string }) => {
+      if (selectedChat && data.chatId === selectedChat.id) {
+        setTypingUser(data.user);
+        setIsTyping(true);
+      }
     };
 
-    const handleUserStopTyping = () => {
-      setTypingUser(null);
-      setIsTyping(false);
+    const handleUserStopTyping = (data: { chatId: string }) => {
+      if (selectedChat && data.chatId === selectedChat.id) {
+        setTypingUser(null);
+        setIsTyping(false);
+      }
     };
 
     const cleanupTyping = onUserTyping(handleUserTyping);
@@ -128,15 +181,7 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
       cleanupTyping();
       cleanupStopTyping();
     };
-  }, [onUserTyping, onUserStopTyping]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  }, [onUserTyping, onUserStopTyping, selectedChat]);
 
   const handleTyping = () => {
     if (!selectedChat || !session?.user?.name) return;
@@ -145,10 +190,10 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    emitTyping(selectedChat.id, selectedChat.type, session.user.name);
+    emitTyping(selectedChat.id, session.user.name);
 
     typingTimeoutRef.current = setTimeout(() => {
-      emitStopTyping(selectedChat.id, selectedChat.type);
+      emitStopTyping(selectedChat.id);
     }, 2000);
   };
 
@@ -183,12 +228,16 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
         type: selectedChat.type,
       });
 
+      // Force scroll to bottom when sending a message
+      setShouldAutoScroll(true);
+      scrollToBottom(true);
+
       setMessage('');
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      emitStopTyping(selectedChat.id, selectedChat.type);
+      emitStopTyping(selectedChat.id);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
@@ -211,21 +260,35 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="p-4 border-b border-gray-200">
+    <div className="flex-1 flex flex-col h-[100dvh] md:h-full relative">
+      {/* Header */}
+      <div className="flex-none p-4 border-b border-gray-200 bg-white">
         <div className="flex items-center space-x-3">
+          <button
+            onClick={onBackClick}
+            className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
+          >
+            <ArrowLeftIcon className="h-6 w-6" />
+          </button>
           <UserAvatar user={{ name: selectedChat?.name || '?' }} />
-          <h2 className="text-xl font-semibold">
-            {selectedChat.name}
-            {selectedChat.type === 'group' && (
-              <span className="ml-2 text-sm text-gray-500">Group</span>
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold">
+              {selectedChat?.name}
+            </h2>
+            {selectedChat?.type === 'group' && (
+              <p className="text-sm text-gray-500">Group</p>
             )}
-          </h2>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-4">
+      {/* Messages Area */}
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto bg-gray-50 pb-[76px]"
+      >
+        <div className="space-y-4 p-4">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -256,16 +319,17 @@ export default function ChatArea({ selectedChat }: ChatAreaProps) {
             </div>
           ))}
           {isTyping && typingUser && (
-            <div className="text-sm text-gray-500 italic">
-              {typingUser} is typing...
+            <div className="mt-2">
+              <TypingIndicator user={typingUser} />
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-200">
-        <form onSubmit={handleSendMessage} className="flex space-x-4">
+      {/* Input Area */}
+      <div className="absolute bottom-0 left-0 right-0 md:relative md:flex-none bg-white border-t border-gray-200">
+        <form onSubmit={handleSendMessage} className="p-4 flex space-x-4">
           <input
             type="text"
             value={message}

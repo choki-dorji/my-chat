@@ -91,37 +91,25 @@ export const useSocket = () => {
     };
   };
 
-  const emitTyping = (chatId: string, type: 'private' | 'group', user: string) => {
-    if (socket.current) {
-      socket.current.emit('typing', { chatId, type, user });
-    }
+  const emitTyping = (chatId: string, username: string) => {
+    socket.current?.emit('typing', { chatId, user: username });
   };
 
-  const emitStopTyping = (chatId: string, type: 'private' | 'group') => {
-    if (socket.current) {
-      socket.current.emit('stop-typing', { chatId, type });
-    }
+  const emitStopTyping = (chatId: string) => {
+    socket.current?.emit('stop_typing', { chatId });
   };
 
-  const onUserTyping = (callback: (user: string) => void) => {
-    if (socket.current) {
-      socket.current.on('user-typing', callback);
-    }
+  const onUserTyping = (callback: (data: { user: string; chatId: string }) => void) => {
+    socket.current?.on('user_typing', callback);
     return () => {
-      if (socket.current) {
-        socket.current.off('user-typing', callback);
-      }
+      socket.current?.off('user_typing', callback);
     };
   };
 
-  const onUserStopTyping = (callback: () => void) => {
-    if (socket.current) {
-      socket.current.on('user-stop-typing', callback);
-    }
+  const onUserStopTyping = (callback: (data: { chatId: string }) => void) => {
+    socket.current?.on('user_stop_typing', callback);
     return () => {
-      if (socket.current) {
-        socket.current.off('user-stop-typing', callback);
-      }
+      socket.current?.off('user_stop_typing', callback);
     };
   };
 

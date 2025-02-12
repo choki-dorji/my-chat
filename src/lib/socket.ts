@@ -78,14 +78,12 @@ export const initSocket = (res: NextApiResponseServerIO) => {
       });
 
       // Handle typing events
-      socket.on('typing', ({ chatId, type, user }: { chatId: string; type: 'private' | 'group'; user: string }) => {
-        const room = `${type}:${chatId}`;
-        socket.to(room).emit('user-typing', user);
+      socket.on('typing', ({ chatId, user }) => {
+        socket.broadcast.emit('user_typing', { chatId, user });
       });
 
-      socket.on('stop-typing', ({ chatId, type }: { chatId: string; type: 'private' | 'group' }) => {
-        const room = `${type}:${chatId}`;
-        socket.to(room).emit('user-stop-typing');
+      socket.on('stop_typing', ({ chatId }) => {
+        socket.broadcast.emit('user_stop_typing', { chatId });
       });
 
       // Handle disconnect

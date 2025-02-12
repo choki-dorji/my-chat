@@ -7,6 +7,7 @@ import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface User {
   id: string;
@@ -143,7 +144,7 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
   };
 
   return (
-    <div className="w-80 border-r border-gray-200 flex flex-col">
+    <div className="h-full flex flex-col bg-white">
       <div className="p-4 border-b border-gray-200">
         <div className="flex space-x-2">
           <button
@@ -175,24 +176,29 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
         {activeTab === 'users' ? (
           <div className="space-y-2">
             {users.map((user) => (
-              <div
-                key={user.id}
-                onClick={() => onSelectChat({
-                  type: 'private',
-                  id: user.id,
-                  name: user.name
-                })}
-                className={`p-3 rounded-lg hover:bg-gray-100 cursor-pointer ${
-                  selectedChat?.id === user.id ? 'bg-gray-100' : ''
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <UserAvatar user={user} />
-                  <div>
-                    <div className="font-medium">{user.name}</div>
-                    <div className="text-sm text-gray-500">{user.email}</div>
+              <div key={user.id} className="flex items-center justify-between p-3 hover:bg-gray-100 rounded-lg">
+                <div
+                  onClick={() => onSelectChat({
+                    type: 'private',
+                    id: user.id,
+                    name: user.name
+                  })}
+                  className="flex-1 cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3">
+                    <UserAvatar user={user} />
+                    <div>
+                      <div className="font-medium">{user.name}</div>
+                      <div className="text-sm text-gray-500">{user.email}</div>
+                    </div>
                   </div>
                 </div>
+                <Link
+                  href={user.id ? `/profile/${user.id}` : '#'}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full"
+                >
+                  <UserIcon className="h-5 w-5" />
+                </Link>
               </div>
             ))}
           </div>
@@ -228,21 +234,24 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
       </div>
 
       <div className="p-4 border-t border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <UserAvatar user={session?.user || { name: '?' }} />
-            <div>
-              <div className="font-medium">{session?.user?.name}</div>
-              <div className="text-sm text-gray-500">{session?.user?.email}</div>
+        <Link href={`/profile/${session?.user?.id || ''}`}>
+          <div className="flex items-center hover:bg-gray-100 rounded-lg p-2 cursor-pointer">
+            <div className="flex items-center space-x-3">
+              <UserAvatar user={session?.user || { name: '?' }} />
+              <div>
+                <div className="font-medium">{session?.user?.name}</div>
+                <div className="text-sm text-gray-500">{session?.user?.email}</div>
+              </div>
             </div>
           </div>
-          <button
-            onClick={() => signOut()}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-          >
-            <ArrowLeftOnRectangleIcon className="h-5 w-5" />
-          </button>
-        </div>
+        </Link>
+        <button
+          onClick={() => signOut()}
+          className="mt-2 w-full p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg flex items-center justify-center"
+        >
+          <ArrowLeftOnRectangleIcon className="h-5 w-5" />
+          <span className="ml-2">Sign Out</span>
+        </button>
       </div>
 
       <Transition appear show={isCreateGroupOpen} as={Fragment}>

@@ -17,10 +17,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="h-full">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
-          {children}
+          <div className="min-h-screen flex flex-col bg-gray-50">
+            {children}
+          </div>
           <Toaster position="top-center" reverseOrder={false} />
         </AuthProvider>
       </body>

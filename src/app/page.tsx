@@ -11,7 +11,7 @@ export default async function Home() {
   }
 
   return (
-    <main className="h-screen">
+    <main className="flex-1 flex">
       <ChatLayout />
     </main>
   );
