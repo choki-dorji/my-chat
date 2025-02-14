@@ -68,6 +68,7 @@ model VerificationToken {
 model Message {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   content   String
+  contentType String   @default("text") // "text" or "voice"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   read      Boolean  @default(false)

@@ -6,6 +6,8 @@ import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
 import { useSocket } from '@/hooks/useSocket';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import VoiceRecorder from './VoiceRecorder';
+import AudioPlayer from './AudioPlayer';
 
 interface ChatAreaProps {
   selectedChat: {
@@ -19,11 +21,13 @@ interface ChatAreaProps {
 interface Message {
   id: string;
   content: string;
+  contentType: 'text' | 'voice';
   senderId: string;
   sender: {
     id: string;
     name: string;
     email: string;
+    image?: string | null;
   };
   receiverId?: string;
   groupId?: string;
@@ -244,6 +248,55 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
     }
   };
 
+  const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
+    if (!selectedChat || !session?.user) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'voice-message.webm');
+      
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload voice message');
+      }
+
+      const { url } = await uploadResponse.json();
+
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: url,
+          contentType: 'voice',
+          ...(selectedChat.type === 'private'
+            ? { receiverId: selectedChat.id }
+            : { groupId: selectedChat.id }),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const savedMessage = await response.json();
+      sendMessage({
+        ...savedMessage,
+        type: selectedChat.type,
+      });
+
+      scrollToBottom(true);
+    } catch (error) {
+      console.error('Error sending voice message:', error);
+      toast.error('Failed to send voice message');
+    }
+  };
+
   if (!selectedChat) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -298,23 +351,49 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                   : 'flex-row'
               }`}
             >
-              <UserAvatar user={msg.sender} />
+              {msg.sender.email !== session?.user?.email && <UserAvatar user={msg.sender} />}
               <div
-                className={`max-w-[70%] rounded-lg p-3 ${
+                className={`${
+                  msg.contentType === 'voice' ? 'p-2' : 'p-3'
+                } ${
                   msg.sender.email === session?.user?.email
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100'
-                }`}
+                    ? msg.contentType === 'voice' ? 'bg-[#0084FF] text-white' : 'bg-[#0084FF] text-white'
+                    : msg.contentType === 'voice' ? 'bg-gray-100' : 'bg-gray-100 text-black'
+                } rounded-lg shadow-sm max-w-[70%]`}
               >
-                {msg.sender.email !== session?.user?.email && (
+                {msg.sender.email !== session?.user?.email && msg.contentType !== 'voice' && (
                   <div className="text-xs text-gray-500 mb-1">
                     {msg.sender.name}
                   </div>
                 )}
-                <div>{msg.content}</div>
-                <div className="text-xs mt-1 opacity-70">
-                  {new Date(msg.createdAt).toLocaleTimeString()}
-                </div>
+                { msg.content.startsWith('http://') ? (
+                  <div className="min-w-[200px]">
+                    <AudioPlayer 
+                      url={msg.content} 
+                      isOwnMessage={msg.sender.email === session?.user?.email}
+                      sender={{
+                        name: msg.sender.name,
+                        image: msg.sender.image
+                      }}
+                    />
+                    <div className="text-xs text-gray-500 text-right mt-1">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>{msg.content}</div>
+                    <div className="text-xs mt-1 text-gray-500">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ))}
@@ -329,7 +408,8 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
 
       {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 md:relative md:flex-none bg-white border-t border-gray-200">
-        <form onSubmit={handleSendMessage} className="p-4 flex space-x-4">
+        <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-4">
+          <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} />
           <input
             type="text"
             value={message}

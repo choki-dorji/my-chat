@@ -22,6 +22,14 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Add this section to handle uploaded files
+  webpack: (config) => {
+    config.module.rules.push({
+      test: /\.(ogg|mp3|wav|mpe?g|webm)$/i,
+      type: 'asset/resource',
+    });
+    return config;
+  },
 }
 
 module.exports = nextConfig 
