@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/solid';
+import { PaperAirplaneIcon, ArrowLeftIcon, PaperClipIcon, SwatchIcon } from '@heroicons/react/24/solid';
 import { useSocket } from '@/hooks/useSocket';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
@@ -21,7 +21,9 @@ interface ChatAreaProps {
 interface Message {
   id: string;
   content: string;
-  contentType: 'text' | 'voice';
+  contentType: 'text' | 'voice' | 'image' | 'video' | 'file';
+  fileName?: string;
+  fileSize?: number;
   senderId: string;
   sender: {
     id: string;
@@ -75,6 +77,15 @@ function TypingIndicator({ user }: { user: string }) {
   );
 }
 
+function isLightColor(color: string): boolean {
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128;
+}
+
 export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
   const { data: session } = useSession();
   const [message, setMessage] = useState('');
@@ -87,6 +98,9 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [bgColor, setBgColor] = useState('#f9fafb'); // default gray-50
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   // Define fetchMessages before using it in useEffect
   const fetchMessages = async () => {
@@ -205,15 +219,37 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
     e.preventDefault();
     if (!message.trim() || !selectedChat || !session?.user) return;
 
+    // Create a temporary message object
+    const tempMessage: Message = {
+      id: Date.now().toString(), // Temporary ID
+      content: message,
+      contentType: 'text',
+      senderId: session.user.email!,
+      sender: {
+        id: session.user.email!,
+        name: session.user.name!,
+        email: session.user.email!,
+        image: session.user.image
+      },
+      ...(selectedChat.type === 'private'
+        ? { receiverId: selectedChat.id }
+        : { groupId: selectedChat.id }),
+      createdAt: new Date()
+    };
+
+    // Immediately add message to UI
+    setMessages(prev => [...prev, tempMessage]);
+    setMessage('');
+    scrollToBottom(true);
+
     try {
-      // Save message to database
       const response = await fetch('/api/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          content: message.trim(),
+          content: message,
           ...(selectedChat.type === 'private'
             ? { receiverId: selectedChat.id }
             : { groupId: selectedChat.id }),
@@ -225,26 +261,25 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       }
 
       const savedMessage = await response.json();
+      
+      // Replace temporary message with saved message
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === tempMessage.id ? savedMessage : msg
+        )
+      );
 
-      // Send through socket
+      // Emit the message through socket
       sendMessage({
         ...savedMessage,
         type: selectedChat.type,
       });
-
-      // Force scroll to bottom when sending a message
-      setShouldAutoScroll(true);
-      scrollToBottom(true);
-
-      setMessage('');
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      emitStopTyping(selectedChat.id);
     } catch (error) {
       console.error('Error sending message:', error);
       toast.error('Failed to send message');
+      
+      // Remove the temporary message if sending failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
     }
   };
 
@@ -297,6 +332,130 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
     }
   };
 
+  function getFileType(url: string) {
+    const extension = url.split('.').pop()?.toLowerCase();
+    
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+    const audioExtensions = ['mp3', 'wav', 'ogg', 'webm', 'aac', 'flac'];
+    const videoExtensions = ['mp4', 'mkv', 'avi', 'mov', 'flv', 'wmv', 'webm'];
+    const documentExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'];
+
+    if (extension && imageExtensions.includes(extension)) return 'image';
+    if (extension && audioExtensions.includes(extension)) return 'audio';
+    if (extension && videoExtensions.includes(extension)) return 'video';
+    if (extension && documentExtensions.includes(extension)) return 'file';
+
+    return 'unknown';
+}
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedChat || !session?.user) return;
+
+    // Create temporary message
+    const tempMessage: Message = {
+      id: Date.now().toString(),
+      content: URL.createObjectURL(file), // Create temporary local URL
+      contentType: file.type.startsWith('image/') ? 'image' : 
+                  file.type.startsWith('video/') ? 'video' : 'file',
+      fileName: file.name,
+      fileSize: file.size,
+      senderId: session.user.email!,
+      sender: {
+        id: session.user.email!,
+        name: session.user.name!,
+        email: session.user.email!,
+        image: session.user.image
+      },
+      ...(selectedChat.type === 'private'
+        ? { receiverId: selectedChat.id }
+        : { groupId: selectedChat.id }),
+      createdAt: new Date()
+    };
+
+    // Immediately add message to UI
+    setMessages(prev => [...prev, tempMessage]);
+    scrollToBottom(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file');
+      }
+
+      const { url } = await uploadResponse.json();
+      
+      // Determine content type
+      let contentType: 'image' | 'video' | 'file';
+      if (file.type.startsWith('image/')) {
+        contentType = 'image';
+      } else if (file.type.startsWith('video/')) {
+        contentType = 'video';
+      } else {
+        contentType = 'file';
+      }
+
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: url,
+          contentType,
+          fileName: file.name,
+          fileSize: file.size,
+          ...(selectedChat.type === 'private'
+            ? { receiverId: selectedChat.id }
+            : { groupId: selectedChat.id }),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const savedMessage = await response.json();
+      sendMessage({
+        ...savedMessage,
+        type: selectedChat.type,
+      });
+
+      // Replace temp message with saved message
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === tempMessage.id ? savedMessage : msg
+        )
+      );
+    } catch (error) {
+      console.error('Error sending file:', error);
+      toast.error('Failed to send file');
+      
+      // Remove temp message on error
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+    }
+  };
+
+  useEffect(() => {
+    const savedColor = localStorage.getItem('chatBgColor');
+    if (savedColor) {
+      setBgColor(savedColor);
+    }
+  }, []);
+
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setBgColor(newColor);
+    localStorage.setItem('chatBgColor', newColor);
+  };
+
   if (!selectedChat) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50">
@@ -332,6 +491,20 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
               <p className="text-sm text-gray-500">Group</p>
             )}
           </div>
+          <button
+            onClick={() => colorInputRef.current?.click()}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+            title="Change chat background"
+          >
+            <SwatchIcon className="h-5 w-5" />
+          </button>
+          <input
+            ref={colorInputRef}
+            type="color"
+            value={bgColor}
+            onChange={handleColorChange}
+            className="hidden"
+          />
         </div>
       </div>
 
@@ -339,7 +512,8 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto bg-gray-50 pb-[76px]"
+        className="flex-1 overflow-y-auto pb-[76px]"
+        style={{ backgroundColor: bgColor }}
       >
         <div className="space-y-4 p-4">
           {messages.map((msg) => (
@@ -357,8 +531,10 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                   msg.contentType === 'voice' ? 'p-2' : 'p-3'
                 } ${
                   msg.sender.email === session?.user?.email
-                    ? msg.contentType === 'voice' ? 'bg-[#0084FF] text-white' : 'bg-[#0084FF] text-white'
-                    : msg.contentType === 'voice' ? 'bg-gray-100' : 'bg-gray-100 text-black'
+                    ? 'bg-[#0084FF] text-white'
+                    : isLightColor(bgColor)
+                      ? 'bg-white text-black shadow-sm'
+                      : 'bg-gray-800 text-white'
                 } rounded-lg shadow-sm max-w-[70%]`}
               >
                 {msg.sender.email !== session?.user?.email && msg.contentType !== 'voice' && (
@@ -366,7 +542,10 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                     {msg.sender.name}
                   </div>
                 )}
-                { msg.content.startsWith('http://') ? (
+                { 
+                // msg.content.startsWith('http://') 
+                getFileType(msg.content) === 'audio'
+                ? (
                   <div className="min-w-[200px]">
                     <AudioPlayer 
                       url={msg.content} 
@@ -383,16 +562,34 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                       })}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div>{msg.content}</div>
-                    <div className="text-xs mt-1 text-gray-500">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </div>
-                  </>
+                ) : getFileType(msg.content) === 'image' ? (
+                  <div className="max-w-[200px]">
+                    <Image
+                      src={msg.content}
+                      alt="Shared image"
+                      width={200}
+                      height={150}
+                      className="rounded-lg object-contain w-full"
+                    />
+                  </div>
+                ) : getFileType(msg.content) === 'video' ? (
+                  <video 
+                    src={msg.content} 
+                    controls 
+                    className="max-w-sm rounded-lg"
+                  />
+                ) : getFileType(msg.content) === 'file' ? (
+                  <a 
+                    href={msg.content}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-2 text-blue-500 hover:text-blue-600"
+                  >
+                    <PaperClipIcon className="h-5 w-5 text-white" />
+                    <span className="text-white">{msg.content.split('/').pop()}</span>
+                  </a>
+                )  : (
+                  <div>{msg.content}</div>
                 )}
               </div>
             </div>
@@ -410,6 +607,22 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       <div className="absolute bottom-0 left-0 right-0 md:relative md:flex-none bg-white border-t border-gray-200">
         <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-4">
           <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} />
+          
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+          >
+            <PaperClipIcon className="h-5 w-5" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFileSelect}
+            accept="image/*,video/*,application/*"
+          />
+          
           <input
             type="text"
             value={message}

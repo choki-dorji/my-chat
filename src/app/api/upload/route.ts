@@ -21,21 +21,23 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Get file extension
+    const fileExt = path.extname(file.name);
+    
     // Create unique filename
-    const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webm`;
+    const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExt}`;
     const uploadDir = path.join(process.cwd(), 'public', 'uploads');
     
     // Ensure upload directory exists
     try {
       await mkdir(uploadDir, { recursive: true });
     } catch (err) {
-      console.log('Upload directory already exists or cannot be created');
+      console.log('Upload directory already exists');
     }
 
     const filepath = path.join(uploadDir, filename);
     await writeFile(filepath, buffer);
 
-    // Return the full URL including the base URL
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const fileUrl = `${baseUrl}/uploads/${filename}`;
 

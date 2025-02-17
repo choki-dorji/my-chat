@@ -47,12 +47,14 @@ export default function ChatLayout() {
   };
 
   return (
-    <div className="flex-1 flex min-h-0">
-      {/* Sidebar - hidden on mobile when chat is selected */}
+    <div className="flex-1 flex min-h-0 h-[100dvh] overflow-hidden">
+      {/* Sidebar - fixed position on desktop, sliding on mobile */}
       <div className={`
         ${selectedChat ? 'hidden md:block' : 'block'}
         w-full md:w-80 
         border-r border-gray-200
+        md:h-full md:overflow-y-auto
+        bg-white
       `}>
         <Sidebar
           selectedChat={selectedChat}
@@ -60,10 +62,10 @@ export default function ChatLayout() {
         />
       </div>
 
-      {/* Chat Area - full screen on mobile when chat is selected */}
+      {/* Chat Area - scrollable content */}
       <div className={`
         ${!selectedChat ? 'hidden md:block' : 'block'}
-        flex-1
+        flex-1 h-full overflow-hidden
       `}>
         <ChatArea
           selectedChat={selectedChat}

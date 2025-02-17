@@ -7,7 +7,14 @@ const nextConfig = {
         hostname: 'ui-avatars.com',
         pathname: '/api/**',
       },
-      // Add any other image domains you might use
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
+      {
+        protocol: 'https',
+        hostname: 'localhost',
+      }
     ],
   },
   // Disable powered by header
