@@ -2,18 +2,12 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import prisma from '@/lib/prismadb';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import { ObjectId } from 'mongodb';
 
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Validate the ID format
-    if (!params.id || !ObjectId.isValid(params.id)) {
-      return new NextResponse('Invalid user ID', { status: 400 });
-    }
-
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
       return new NextResponse('Unauthorized', { status: 401 });
@@ -23,7 +17,21 @@ export async function PATCH(
       where: { email: session.user.email }
     });
 
-    if (!currentUser || currentUser.id !== params.id) {
+    if (!currentUser) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    // Find target user by ID or email
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: params.id },
+          { email: params.id }
+        ]
+      }
+    });
+
+    if (!targetUser || targetUser.email !== session.user.email) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
@@ -31,7 +39,7 @@ export async function PATCH(
     const { name, image } = body;
 
     const updatedUser = await prisma.user.update({
-      where: { id: params.id },
+      where: { id: targetUser.id },
       data: {
         name: name || undefined,
         image: image || undefined,

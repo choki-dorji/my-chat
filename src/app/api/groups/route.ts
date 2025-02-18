@@ -45,7 +45,14 @@ export async function POST(request: Request) {
       include: {
         members: {
           include: {
-            user: true
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                image: true
+              }
+            }
           }
         }
       }
@@ -87,7 +94,14 @@ export async function GET(_request: Request) {
       include: {
         members: {
           include: {
-            user: true
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                image: true
+              }
+            }
           }
         }
       }

@@ -53,7 +53,7 @@ function UserAvatar({ user }: { user: { name: string; image?: string | null } })
 
   return (
     <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-medium">
-      {user.name?.charAt(0).toUpperCase()}
+      {user.name.charAt(0).toUpperCase()}
     </div>
   );
 }
@@ -71,6 +71,8 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
     fetchUsers();
     fetchGroups();
   }, []);
+  console.log("data", session)
+  console.log(users)
 
   const fetchUsers = async () => {
     try {
@@ -107,6 +109,7 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
       return;
     }
 
+    console.log(session)
     try {
       const response = await fetch('/api/groups', {
         method: 'POST',
@@ -194,7 +197,7 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
                   </div>
                 </div>
                 <Link
-                  href={user.id ? `/profile/${user.id}` : '#'}
+                  href={`/profile/${user.id}`}
                   className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full"
                 >
                   <UserIcon className="h-5 w-5" />
@@ -234,17 +237,24 @@ export default function Sidebar({ selectedChat, onSelectChat }: SidebarProps) {
       </div>
 
       <div className="p-4 border-t border-gray-200">
-        <Link href={`/profile/${session?.user?.id || ''}`}>
-          <div className="flex items-center hover:bg-gray-100 rounded-lg p-2 cursor-pointer">
-            <div className="flex items-center space-x-3">
-              <UserAvatar user={session?.user || { name: '?' }} />
-              <div>
-                <div className="font-medium">{session?.user?.name}</div>
-                <div className="text-sm text-gray-500">{session?.user?.email}</div>
+        {session?.user?.email && session?.user?.name && (
+          <Link 
+            href={`/profile/${session?.user?.email}`}
+          >
+            <div className="flex items-center hover:bg-gray-100 rounded-lg p-2 cursor-pointer">
+              <div className="flex items-center space-x-3">
+                <UserAvatar user={{ 
+                  name: session.user.name,
+                  image: session.user.image 
+                }} />
+                <div>
+                  <div className="font-medium">{session.user.name}</div>
+                  <div className="text-sm text-gray-500">{session.user.email}</div>
+                </div>
               </div>
             </div>
-          </div>
-        </Link>
+          </Link>
+        )}
         <button
           onClick={() => signOut()}
           className="mt-2 w-full p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg flex items-center justify-center"

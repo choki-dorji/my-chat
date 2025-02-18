@@ -101,6 +101,7 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [bgColor, setBgColor] = useState('#f9fafb'); // default gray-50
   const colorInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   // Define fetchMessages before using it in useEffect
   const fetchMessages = async () => {
@@ -352,10 +353,17 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
     const file = e.target.files?.[0];
     if (!file || !selectedChat || !session?.user) return;
 
+    // Check file size (e.g., 50MB limit)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('File is too large. Maximum size is 50MB');
+      return;
+    }
+
     // Create temporary message
     const tempMessage: Message = {
       id: Date.now().toString(),
-      content: URL.createObjectURL(file), // Create temporary local URL
+      content: URL.createObjectURL(file),
       contentType: file.type.startsWith('image/') ? 'image' : 
                   file.type.startsWith('video/') ? 'video' : 'file',
       fileName: file.name,
@@ -381,16 +389,20 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       const formData = new FormData();
       formData.append('file', file);
       
+      // Show upload progress toast
+      const uploadToast = toast.loading(`Uploading ${file.name}...`);
+      
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        throw new Error(await uploadResponse.text() || 'Failed to upload file');
       }
 
       const { url } = await uploadResponse.json();
+      toast.dismiss(uploadToast);
       
       // Determine content type
       let contentType: 'image' | 'video' | 'file';
@@ -419,7 +431,7 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to send message');
+        throw new Error(await response.text() || 'Failed to send message');
       }
 
       const savedMessage = await response.json();
@@ -434,9 +446,11 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
           msg.id === tempMessage.id ? savedMessage : msg
         )
       );
+      
+      toast.success('File sent successfully');
     } catch (error) {
       console.error('Error sending file:', error);
-      toast.error('Failed to send file');
+      toast.error(error instanceof Error ? error.message : 'Failed to send file');
       
       // Remove temp message on error
       setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
@@ -474,17 +488,17 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
   return (
     <div className="flex-1 flex flex-col h-[100dvh] md:h-full relative">
       {/* Header */}
-      <div className="flex-none p-4 border-b border-gray-200 bg-white">
+      <div className="flex-none p-3 md:p-4 border-b border-gray-200 bg-white">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBackClick}
             className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
           >
-            <ArrowLeftIcon className="h-6 w-6" />
+            <ArrowLeftIcon className="h-5 w-5" />
           </button>
           <UserAvatar user={{ name: selectedChat?.name || '?' }} />
-          <div className="flex-1">
-            <h2 className="text-xl font-semibold">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg md:text-xl font-semibold truncate">
               {selectedChat?.name}
             </h2>
             {selectedChat?.type === 'group' && (
@@ -512,10 +526,10 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto pb-[76px]"
+        className="flex-1 overflow-y-auto pb-[68px] md:pb-[76px]"
         style={{ backgroundColor: bgColor }}
       >
-        <div className="space-y-4 p-4">
+        <div className="space-y-2 md:space-y-4 p-3 md:p-4">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -525,17 +539,21 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                   : 'flex-row'
               }`}
             >
-              {msg.sender.email !== session?.user?.email && <UserAvatar user={msg.sender} />}
+              {msg.sender.email !== session?.user?.email && (
+                <div className="flex-shrink-0">
+                  <UserAvatar user={msg.sender} />
+                </div>
+              )}
               <div
                 className={`${
-                  msg.contentType === 'voice' ? 'p-2' : 'p-3'
+                  msg.contentType === 'voice' ? 'p-2' : 'p-2 md:p-3'
                 } ${
                   msg.sender.email === session?.user?.email
                     ? 'bg-[#0084FF] text-white'
                     : isLightColor(bgColor)
                       ? 'bg-white text-black shadow-sm'
                       : 'bg-gray-800 text-white'
-                } rounded-lg shadow-sm max-w-[70%]`}
+                } rounded-lg shadow-sm max-w-[85%] md:max-w-[70%] break-words`}
               >
                 {msg.sender.email !== session?.user?.email && msg.contentType !== 'voice' && (
                   <div className="text-xs text-gray-500 mb-1">
@@ -573,11 +591,22 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
                     />
                   </div>
                 ) : getFileType(msg.content) === 'video' ? (
-                  <video 
-                    src={msg.content} 
-                    controls 
-                    className="max-w-sm rounded-lg"
-                  />
+                  <div className="max-w-[300px] w-full">
+                    <video 
+                      src={msg.content} 
+                      controls 
+                      playsInline
+                      preload="metadata"
+                      className="rounded-lg w-full max-h-[400px] object-contain bg-black"
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {msg.fileName && (
+                        <span className="block truncate">{msg.fileName}</span>
+                      )}
+                    </div>
+                  </div>
                 ) : getFileType(msg.content) === 'file' ? (
                   <a 
                     href={msg.content}
@@ -605,7 +634,7 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
 
       {/* Input Area */}
       <div className="absolute bottom-0 left-0 right-0 md:relative md:flex-none bg-white border-t border-gray-200">
-        <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-4">
+        <form onSubmit={handleSendMessage} className="p-2 md:p-4 flex items-center space-x-2 md:space-x-4">
           <VoiceRecorder onRecordingComplete={handleVoiceRecordingComplete} />
           
           <button
@@ -615,12 +644,14 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
           >
             <PaperClipIcon className="h-5 w-5" />
           </button>
+          
           <input
             ref={fileInputRef}
             type="file"
             className="hidden"
             onChange={handleFileSelect}
-            accept="image/*,video/*,application/*"
+            accept="image/*,video/*,audio/*,application/*"
+            capture={isMobile ? 'environment' : undefined}
           />
           
           <input
@@ -631,11 +662,11 @@ export default function ChatArea({ selectedChat, onBackClick }: ChatAreaProps) {
               handleTyping();
             }}
             placeholder="Type a message..."
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500"
+            className="flex-1 rounded-lg border border-gray-300 px-3 md:px-4 py-2 focus:outline-none focus:border-blue-500 text-sm md:text-base"
           />
           <button
             type="submit"
-            className="bg-blue-500 text-white rounded-lg px-4 py-2 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="bg-blue-500 text-white rounded-lg px-3 md:px-4 py-2 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <PaperAirplaneIcon className="h-5 w-5" />
           </button>

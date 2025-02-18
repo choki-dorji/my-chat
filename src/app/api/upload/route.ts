@@ -4,6 +4,13 @@ import { authOptions } from '../auth/[...nextauth]/route';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
+export const config = {
+  api: {
+    bodyParser: false,
+    responseLimit: '50mb',
+  },
+};
+
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,11 +25,23 @@ export async function POST(request: Request) {
       return new NextResponse('No file uploaded', { status: 400 });
     }
 
+    // Check file size (50MB)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      return new NextResponse('File is too large. Maximum size is 50MB', { status: 400 });
+    }
+
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     // Get file extension
-    const fileExt = path.extname(file.name);
+    const fileExt = path.extname(file.name).toLowerCase();
+    
+    // Validate file type
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm', '.mov', '.pdf', '.doc', '.docx'];
+    if (!allowedExtensions.includes(fileExt)) {
+      return new NextResponse('Invalid file type', { status: 400 });
+    }
     
     // Create unique filename
     const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}${fileExt}`;
@@ -46,10 +65,4 @@ export async function POST(request: Request) {
     console.error('Upload error:', error);
     return new NextResponse('Error uploading file', { status: 500 });
   }
-}
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}; 
+} 

@@ -1,10 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { ArrowLeftIcon, ChatBubbleLeftIcon, PhoneIcon } from '@heroicons/react/24/solid';
+import { ArrowLeftIcon, ChatBubbleLeftIcon, PhoneIcon, UsersIcon } from '@heroicons/react/24/solid';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+}
+
+interface GroupMember {
+  user: User;
+  role: string;
+}
 
 interface ProfileViewProps {
   user: {
@@ -13,6 +25,8 @@ interface ProfileViewProps {
     email: string;
     image?: string | null;
     createdAt: Date;
+    isGroup?: boolean;
+    members?: GroupMember[];
   };
   isOwnProfile: boolean;
 }
@@ -22,6 +36,7 @@ export default function ProfileView({ user, isOwnProfile }: ProfileViewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user.name);
   const [image, setImage] = useState(user.image);
+  const [showMembers, setShowMembers] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,18 +76,22 @@ export default function ProfileView({ user, isOwnProfile }: ProfileViewProps) {
     }
   };
 
-  const handleStartChat = () => {
-    router.push(`/?chat=${user.id}&type=private&name=${encodeURIComponent(user.name)}`);
-  };
-
   const handleBack = () => {
     router.back();
   };
 
+  const handleStartChat = (userId?: string, userName?: string) => {
+    if (userId && userName) {
+      router.push(`/?chat=${userId}&type=private&name=${encodeURIComponent(userName)}`);
+    } else {
+      router.push(`/?chat=${user.id}&type=${user.isGroup ? 'group' : 'private'}&name=${encodeURIComponent(user.name)}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header with large image */}
-      <div className="bg-[#008069] text-white">
+      {/* Header - changed from [#008069] to [#0084FF] */}
+      <div className="bg-[#0084FF] text-white">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center p-4">
             <button onClick={handleBack} className="p-2 hover:bg-white/10 rounded-full">
@@ -99,25 +118,70 @@ export default function ProfileView({ user, isOwnProfile }: ProfileViewProps) {
         </div>
       </div>
 
-      {/* Info Sections */}
+      {/* Info Sections - changed text color from [#008069] to [#0084FF] */}
       <div className="max-w-3xl mx-auto mt-2 space-y-2">
         {/* Name Section */}
         <div className="bg-white p-4">
-          <div className="text-[#008069] text-sm mb-1">Name</div>
+          <div className="text-[#0084FF] text-sm mb-1">Name</div>
           <div className="text-black text-lg">{user.name}</div>
         </div>
 
-        {/* Email Section */}
-        <div className="bg-white p-4">
-          <div className="text-[#008069] text-sm mb-1">Email</div>
-          <div className="text-black text-lg">{user.email}</div>
-        </div>
+        {user.isGroup ? (
+          // Group Members Section
+          <div className="bg-white p-4">
+            <button 
+              onClick={() => setShowMembers(!showMembers)}
+              className="flex items-center justify-between w-full"
+            >
+              <div>
+                <div className="text-[#0084FF] text-sm mb-1">Members</div>
+                <div className="text-black text-lg">{user.members?.length || 0} members</div>
+              </div>
+              <UsersIcon className="h-5 w-5 text-[#0084FF]" />
+            </button>
+
+            {showMembers && (
+              <div className="mt-4 space-y-3">
+                {user.members?.map((member) => (
+                  <div key={member.user.id} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 relative">
+                        <Image
+                          src={member.user.image || `/api/avatar/${member.user.name}`}
+                          alt={member.user.name}
+                          fill
+                          className="rounded-full object-cover"
+                        />
+                      </div>
+                      <div>
+                        <div className="font-medium">{member.user.name}</div>
+                        <div className="text-sm text-gray-500">{member.role}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleStartChat(member.user.id, member.user.name)}
+                      className="p-2 text-[#0084FF] hover:bg-blue-50 rounded-full"
+                    >
+                      <ChatBubbleLeftIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          // Email Section */}
+          <div className="bg-white p-4">
+            <div className="text-[#0084FF] text-sm mb-1">Email</div>
+            <div className="text-black text-lg">{user.email}</div>
+          </div>
+        )}
 
         {/* About Section */}
         <div className="bg-white p-4">
-          <div className="text-[#008069] text-sm mb-1">About</div>
+          <div className="text-[#0084FF] text-sm mb-1">About</div>
           <div className="text-black text-lg">
-            Joined {new Date(user.createdAt).toLocaleDateString(undefined, {
+            {user.isGroup ? 'Group created' : 'Joined'} {new Date(user.createdAt).toLocaleDateString(undefined, {
               year: 'numeric',
               month: 'long',
               day: 'numeric'
@@ -127,18 +191,18 @@ export default function ProfileView({ user, isOwnProfile }: ProfileViewProps) {
 
         {!isOwnProfile && (
           <div className="bg-white p-4 space-y-4">
-            {/* Message Button */}
+            {/* Message Button - changed from [#008069] to [#0084FF] */}
             <button
-              onClick={handleStartChat}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-[#008069] text-white rounded-lg hover:bg-[#006d59]"
+              onClick={() => handleStartChat()}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-[#0084FF] text-white rounded-lg hover:bg-[#0084FF]/90"
             >
               <ChatBubbleLeftIcon className="h-5 w-5" />
               <span>Message</span>
             </button>
 
-            {/* Voice Call Button */}
+            {/* Voice Call Button - changed from [#008069] to [#0084FF] */}
             <button
-              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-[#008069] text-white rounded-lg hover:bg-[#006d59]"
+              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-[#0084FF] text-white rounded-lg hover:bg-[#0084FF]/90"
             >
               <PhoneIcon className="h-5 w-5" />
               <span>Voice Call</span>
